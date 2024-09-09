@@ -1,0 +1,477 @@
+{% extends "base.html" %}
+
+{% block title %}Customer Dashboard{% endblock %}
+
+{% block side_nav %}
+<div class="card card-body">
+    <h5>Telecaller Feedback</h5>
+    <div style="max-height: 400px; overflow-y: auto;">
+        {% for feedback in feedbacks %}
+        <div class="card
+            {% if feedback.feedback_type == 'TC Feedback' %}bg-light-yellow
+            {% elif feedback.feedback_type == 'PR Feedback' %}bg-light-red
+            {% elif feedback.feedback_type == 'Installation Feedback' %}bg-light-green
+            {% else %}bg-light{% endif %} text-dark mb-2">
+            <div class="card-body">
+                <h6 class="card-title">{{ feedback.name }}</h6>
+                <small class="text-muted">{{ feedback.phone_number }}</small>
+                <p class="card-text">{{ feedback.lead_incharge }} - {{ feedback.feedback_type }}: {{ feedback.feedback }}</p>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="container mt-2">
+        <div class="mt-4 text-center">
+            <p class="display-6">Leads</p>
+            <p class="fs-2 text-primary fw-bold" id="totalCustomers">{{ total_customers }}</p>
+        </div>
+        <div class="row mb-3">
+            <div class="col-md-2  mb-2">
+                <label for="entriesInput" class="form-label">Show Leads :</label>
+                <div class="col-md-6  mb-2">
+                    <input type="number" id="entriesInput" class="form-control" min="1" max="100" placeholder="Per Leads" size="10">
+                </div>
+            </div>
+
+            <div class="col-md-3  mb-2"></div>
+
+            <div class="col-md-2 mb-2">
+                <label for="fileUpload" class="form-label">Upload Excel file :</label>
+                <input type="file" id="fileUpload" accept=".xls, .xlsx" class="form-control">
+            </div>
+
+            <div class="col-md-2  mb-2">
+                <label for="select_requirement" class="form-label">Select Requirement: </label>
+                <select id="select_requirement" class="form-control" required>
+                    <option value="">Select Requirement</option>
+                    <option value="Gate Automation">Gate Automation</option>
+                    <option value="Smart Home">Smart Home</option>
+                    <option value="Security System">Security System</option>
+                </select>
+            </div>
+
+            <div class="col-md-2  mb-2">
+                <label for="assignDropdown" class="form-label">Assign: </label>
+                <select id="assignDropdown" class="form-control">
+                    <option value="Each_equal_lead">Assign Equal Leads</option>
+                    {% for staff_member in tc_staff %}
+                    <option value="{{ staff_member.name }}" data-mobile="{{ staff_member.mobile }}">{{ staff_member.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-1  mb-3 d-flex align-items-end">
+                <button type="button" class="btn btn-secondary" id="assignButton">Assign</button>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-striped" id="leadsTable">
+                <thead>
+                    <tr>
+                        <th scope="col">
+                            <input type="checkbox" id="selectAllCheckbox">
+                        </th>
+                        <th scope="col" data-column="fullName" class="sortable">Full Name</th>
+                        <th scope="col" data-column="phone_number" class="sortable">Phone Number</th>
+                        <th scope="col" data-column="city" class="sortable">City</th>
+                        <th scope="col" data-column="created_date" class="sortable">Created Date</th>
+                        <th scope="col" data-column="gate_type" class="sortable">Gate Type</th>
+                        <th scope="col" data-column="work_phone_number" class="sortable">Work Phone Number</th>
+                        <th scope="col" data-column="campaign_name" class="sortable">Campaign Name</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if leads %}
+                    {% for phone_number, lead_data in leads.items() %}
+                        <tr>
+                            <td><input type="checkbox" class="leadCheckbox"></td>
+                            <td>{{ lead_data.name }}</td>
+                            <td>{{ lead_data.phone_number }}</td>
+                            <td>{{ lead_data.city }}</td>
+                            <td>{{ lead_data.created_date }}</td>
+                            <td>{{ lead_data.gate_type }}</td>
+                            <td>{{ lead_data.work_phone_number }}</td>
+                            <td>{{ lead_data.campaign_name }}</td>
+                        </tr>
+                    {% endfor %}
+                    {% else %}
+                        <tr class="text-center">
+                            <td colspan="7">No leads available.</td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-database.js"></script>
+<script>
+    
+    var firebaseConfig = {
+        apiKey: "AIzaSyCMp8OJqHy8CkWr6AfYZ0DMMi40wKI98VM",
+        authDomain: "marketing-data-d141d.firebaseapp.com",
+        databaseURL: "https://marketing-data-d141d-default-rtdb.firebaseio.com",
+        projectId: "marketing-data-d141d",
+        storageBucket: "marketing-data-d141d.appspot.com",
+        messagingSenderId: "566962550940",
+        appId: "1:566962550940:web:eee189eca2bb49309e5559",
+        measurementId: "G-Z54PR6Y2ZP"
+    };
+    firebase.initializeApp(firebaseConfig);
+    var database = firebase.database();
+
+    let leads = [];
+        let sortedColumn = null;
+        let sortOrder = 'asc';
+
+        document.querySelectorAll('.sortable').forEach(header => {
+            header.addEventListener('click', function() {
+                const column = this.getAttribute('data-column');
+                if (sortedColumn === column) {
+                    sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+                } else {
+                    sortedColumn = column;
+                    sortOrder = 'asc';
+                }
+                updateTable(leads);
+            });
+        });
+
+        function sortData(data, column, order) {
+            return data.sort((a, b) => {
+                if (a[column] < b[column]) return order === 'asc' ? -1 : 1;
+                if (a[column] > b[column]) return order === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+
+        function updateTable(data) {
+            const tableBody = document.querySelector('#leadsTable tbody');
+            tableBody.innerHTML = '';
+
+            if (sortedColumn) {
+                data = sortData(data, sortedColumn, sortOrder);
+            }
+
+            data.forEach(item => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><input type="checkbox" class="leadCheckbox"></td>
+                    <td>${item.name}</td>
+                    <td>${item.phone_number}</td>
+                    <td>${item.city}</td>
+                    <td>${item.created_date}</td>
+                    <td>${item.gate_type}</td>
+                    <td>${item.work_phone_number}</td>
+                    <td>${item.campaign_name}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+
+            updateCustomerCount(data.length);
+        }
+
+        function updateCustomerCount(count) {
+            document.getElementById('totalCustomers').textContent = count;
+        }
+
+        var leadsRef = database.ref('leads');
+        leadsRef.on('value', (snapshot) => {
+            leads = [];
+            snapshot.forEach((childSnapshot) => {
+                const lead = childSnapshot.val();
+                leads.push(lead);
+            });
+            updateTable(leads);
+        });
+
+        document.getElementById('selectAllCheckbox').addEventListener('change', function() {
+            const isChecked = this.checked;
+            document.querySelectorAll('.leadCheckbox').forEach(checkbox => {
+                checkbox.checked = isChecked;
+            });
+        });
+    document.addEventListener("DOMContentLoaded", function() {
+        const entriesInput = document.getElementById('entriesInput');
+        const leadsTable = document.getElementById('leadsTable');
+        const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+        const fileUpload = document.getElementById('fileUpload');
+        const assignButton = document.getElementById('assignButton');
+        const assignDropdown = document.getElementById('assignDropdown');
+
+        fileUpload.addEventListener('change', function() {
+            document.querySelector('.spinner-bg').style.display = 'block';
+    
+            const file = fileUpload.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = async function(e) {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const sheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[sheetName];
+                    const xlData = XLSX.utils.sheet_to_json(worksheet, { raw: false });
+    
+                    const headers = Object.keys(xlData[0]);
+    
+                    const jsonData = xlData.map(row => {
+                        const rowData = {};
+                        headers.forEach(header => {
+                            rowData[header] = row[header];
+                        });
+                        return rowData;
+                    });
+    
+                    const filteredData = jsonData.map(row => ({
+                        fullName: row['full_name'],
+                        work_phone_number: row['work_phone_number'],
+                        city: row['city'] || None,
+                        campaign_name: row['campaign_name'],
+                        gate_type: row['gate_type'],
+                        phone_number: row['phone_number'],
+                        platform: row['platform'],
+                        created_date: row['created_time'] 
+                    }));
+    
+                    const confirmation = confirm('Do you want to upload the data?');
+                    if (confirmation) {
+                        try {
+                            const batchSize = 100;
+                            const batches = [];
+    
+                            for (let i = 0; i < filteredData.length; i += batchSize) {
+                                batches.push(filteredData.slice(i, i + batchSize));
+                            }
+    
+                            const uploadPromises = batches.map(batch => fetch('/upload_excel', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify(batch)
+                            }).then(response => {
+                                if (!response.ok) {
+                                    throw new Error('Network response was not ok');
+                                }
+                                return response.json();
+                            }));
+    
+                            await Promise.all(uploadPromises);
+                        } catch (error) {
+                            console.error('Error:', error);
+                        } finally {
+                            document.querySelector('.spinner-bg').style.display = 'none';
+                        }
+                    } else {
+                        document.querySelector('.spinner-bg').style.display = 'none';
+                        console.log('User cancelled the upload.');
+                    }
+                };
+    
+                reader.readAsArrayBuffer(file);
+            } else {
+                alert('Please select an Excel file.');
+                document.querySelector('.spinner-bg').style.display = 'none';
+            }
+        });
+        
+
+        function updateSelectAllCheckboxState() {
+            const leadCheckboxes = document.querySelectorAll('.leadCheckbox');
+            let allChecked = true;
+            let anyVisible = false;
+            leadCheckboxes.forEach(checkbox => {
+                if (checkbox.closest('tr').style.display !== 'none') {
+                    anyVisible = true;
+                    if (!checkbox.checked) {
+                        allChecked = false;
+                    }
+                }
+            });
+            selectAllCheckbox.checked = anyVisible && allChecked;
+        }
+
+        leadsTable.addEventListener('change', function(event) {
+            if (event.target.classList.contains('leadCheckbox')) {
+                updateSelectAllCheckboxState();
+            }
+        });
+
+        selectAllCheckbox.addEventListener('change', function() {
+            const leadCheckboxes = document.querySelectorAll('.leadCheckbox');
+            leadCheckboxes.forEach(checkbox => {
+                if (checkbox.closest('tr').style.display !== 'none') {
+                    checkbox.checked = selectAllCheckbox.checked;
+                }
+            });
+        });
+
+        entriesInput.addEventListener('input', function() {
+            const maxEntries = parseInt(entriesInput.value);
+            const leadRows = leadsTable.getElementsByTagName('tr');
+
+            if (isNaN(maxEntries) || maxEntries <= 0) {
+                for (let i = 1; i < leadRows.length; i++) {
+                    leadRows[i].style.display = '';
+                }
+            } else {
+                let visibleCount = 0;
+                for (let i = 1; i < leadRows.length; i++) {
+                    if (visibleCount < maxEntries) {
+                        leadRows[i].style.display = '';
+                        visibleCount++;
+                    } else {
+                        leadRows[i].style.display = 'none';
+                    }
+                }
+            }
+
+            updateSelectAllCheckboxState();
+        });
+
+        assignButton.addEventListener('click', function() {
+            const assignDropdown = document.getElementById('assignDropdown');
+            const selectedOption = assignDropdown.value;
+            const selectedRequirement = document.getElementById('select_requirement').value;
+            const selectedLeads = [];
+        
+            if (!selectedRequirement) {
+                alert("Please select a requirement before assigning leads.");
+                return;
+            }
+
+            document.querySelectorAll('.leadCheckbox:checked').forEach(checkbox => {
+                const row = checkbox.closest('tr');
+                selectedLeads.push({
+                    name: row.cells[1].innerText || 'None',
+                    phone_number: row.cells[2].innerText || 'None',
+                    city: row.cells[3].innerText || 'None',
+                    created_date: row.cells[4].innerText || 'None',
+                    gate_type: row.cells[5].innerText || 'None',
+                    work_phone_number: row.cells[6].innerText || 'None',
+                    campaign_name: row.cells[7].innerText || 'None'
+                });
+            });
+            const selectedStaffOption = assignDropdown.options[assignDropdown.selectedIndex];
+            const selectedStaffName = selectedStaffOption.value;
+            const selectedStaffMobile = selectedStaffOption.getAttribute('data-mobile');
+        
+            // Show the spinner
+            document.querySelector('.spinner-bg').style.display = 'block';
+        
+            if (selectedOption === 'Each_equal_lead') {
+                if (confirm("Are you sure you want to assign leads?")) {
+                    const staffMembers = document.querySelectorAll('#assignDropdown option');
+                    const numStaff = staffMembers.length - 1;
+        
+                    const numSelectedLeads = selectedLeads.length;
+                    const leadsPerStaff = Math.floor(numSelectedLeads / numStaff);
+                    const remainder = numSelectedLeads % numStaff;
+        
+                    let leadIndex = 0;
+                    staffMembers.forEach((staffOption, index) => {
+                        if (index > 0) {
+                            const staffName = staffOption.value;
+                            const staffMobile = staffOption.getAttribute('data-mobile');
+                            const assignedLeads = [];
+        
+                            for (let i = 0; i < leadsPerStaff; i++) {
+                                if (leadIndex < numSelectedLeads) {
+                                    assignedLeads.push(selectedLeads[leadIndex]);
+                                    leadIndex++;
+                                }
+                            }
+        
+                            if (index <= remainder && remainder > 0) {
+                                assignedLeads.push(selectedLeads[leadIndex]);
+                                leadIndex++;
+                            }
+        
+                            fetch('/upload_leads', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({
+                                    selectedUser: staffName,
+                                    selectedMobile: staffMobile,
+                                    selectedLeads: assignedLeads,
+                                    requirement: selectedRequirement
+                                })
+                            })
+                            .then(response => {
+                                if (!response.ok) {
+                                    throw new Error('Network response was not ok');
+                                }
+                                window.location.reload();
+                                return response.json();
+                            })
+                            .then(data => {
+                                console.log('Data received from server:', data);
+                            })
+                            .catch(error => {
+                                console.error('Error:', error);
+                            })
+                            .finally(() => {
+                                document.querySelector('.spinner-bg').style.display = 'none';
+                            });
+                        }
+                    });
+                }else{
+                    document.querySelector('.spinner-bg').style.display = 'none';
+                }
+            } else {
+                if (confirm("Are you sure you want to assign leads?")) {
+                    const assignedLeads = selectedLeads;
+                    console.log("selectedStaffName",selectedStaffName)
+                    console.log("selectedStaffMobile",selectedStaffMobile)
+                    console.log("assignedLeads",assignedLeads)
+                    console.log("selectedRequirement",selectedRequirement)
+                    fetch('/upload_leads', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            selectedUser: selectedStaffName,
+                            selectedMobile: selectedStaffMobile,
+                            selectedLeads: assignedLeads,
+                            requirement: selectedRequirement
+                        })
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Network response was not ok');
+                        }
+                        window.location.reload();
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('Data received from server:', data);
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                    })
+                    .finally(() => {
+                        // Hide the spinner after completing the assignment
+                        document.querySelector('.spinner-bg').style.display = 'none';
+                    });
+                }
+            }
+        });
+
+        updateSelectAllCheckboxState();
+    });
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.16.9/xlsx.full.min.js"></script>
+
+{% endblock %}
+
